@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  n8n:
+    build: .
+    container_name: n8n_con_python
+    ports:
+      - "5678:5678"
+    volumes:
+      - C:\Users\srssd\.n8n:/home/node/.n8n
+      - D:\betting:/data
+    environment:
+      - GENERIC_TIMEZONE=Europe/Madrid
