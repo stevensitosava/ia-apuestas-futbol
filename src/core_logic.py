@@ -178,48 +178,70 @@ def run_analysis():
     return "\n".join(informe_inicial)
 
 def run_review_predictions():
-    # ... (código sin cambios)
+    """Revisa las predicciones pendientes con una lógica de búsqueda y comparación robusta."""
     log_file = 'predictions_log.csv'
     output_log = ["--- 📖 Iniciando Revisión de Predicciones ---"]
-    try: log_df = pd.read_csv(log_file)
-    except FileNotFoundError: return "❌ No se encontró el diario de predicciones."
+    try:
+        log_df = pd.read_csv(log_file)
+    except FileNotFoundError:
+        return "❌ No se encontró el diario de predicciones."
+
     pending_predictions = log_df[log_df['status'] == 'PENDIENTE']
     if pending_predictions.empty: return "✅ No hay predicciones nuevas que revisar."
+
     output_log.append(f"Revisando {len(pending_predictions)} predicciones pendientes...")
     all_scores = []
     for league in settings.ODDS_API_LEAGUES:
         all_scores.extend(get_recent_scores_from_api(settings.ODDS_API_KEY, league, days_ago=3))
+
     if not all_scores: return "No se pudieron obtener resultados recientes."
+
     aciertos, fallos = 0, 0
     for index, row in pending_predictions.iterrows():
-        home_team_log_norm, away_team_log_norm = normalize_team_name(row['home_team']), normalize_team_name(row['away_team'])
+        home_team_log_norm = normalize_team_name(row['home_team'])
+        away_team_log_norm = normalize_team_name(row['away_team'])
         date_to_find = row['date'][:10]
+        
         match_result = None
         for s in all_scores:
             if s.get('completed'):
-                home_team_api_norm, away_team_api_norm = normalize_team_name(s.get('home_team', '')), normalize_team_name(s.get('away_team', ''))
+                home_team_api_norm = normalize_team_name(s.get('home_team', ''))
+                away_team_api_norm = normalize_team_name(s.get('away_team', ''))
                 api_date = s['commence_time'][:10]
-                if (home_team_api_norm == home_team_log_norm and away_team_api_norm == away_team_log_norm and api_date == date_to_find):
+                
+                if (home_team_api_norm == home_team_log_norm and
+                    away_team_api_norm == away_team_log_norm and
+                    api_date == date_to_find):
                     match_result = s
                     break
+        
         if match_result and match_result.get('scores'):
-            home_team_original_api, away_team_original_api = match_result['home_team'], match_result['away_team']
+            home_team_original_api = match_result['home_team']
+            away_team_original_api = match_result['away_team']
             home_score = next((int(s['score']) for s in match_result['scores'] if s['name'] == home_team_original_api), None)
             away_score = next((int(s['score']) for s in match_result['scores'] if s['name'] == away_team_original_api), None)
+
             if home_score is not None and away_score is not None:
                 if home_score > away_score: actual_outcome = '1'
                 elif home_score == away_score: actual_outcome = 'X'
                 else: actual_outcome = '2'
+
                 log_df.loc[index, 'status'] = 'REVISADO'
                 log_df.loc[index, 'actual_outcome'] = actual_outcome
-                if row['predicted_outcome'] == actual_outcome:
-                    log_df.loc[index, 'is_correct'], aciertos = True, aciertos + 1
+                
+                # --- LÍNEA CORREGIDA ---
+                # Comparamos ambos valores como texto para evitar errores de tipo
+                if str(row['predicted_outcome']) == str(actual_outcome):
+                    log_df.loc[index, 'is_correct'] = True
+                    aciertos += 1
                 else:
-                    log_df.loc[index, 'is_correct'], fallos = False, fallos + 1
+                    log_df.loc[index, 'is_correct'] = False
+                    fallos += 1
+
     log_df.to_csv(log_file, index=False)
-    output_log.append(f"\n--- Resumen de la Revisión ---\nAciertos: {aciertos} | Fallos: {fallos}")
-    if (aciertos + fallos) > 0:
-        precision = (aciertos / (aciertos + fallos)) * 100
+    output_log.append(f"\n--- Resumen de la Revisión ---\nAciertos: {aciertos} | Fallos: {len(pending_predictions) - aciertos}")
+    if (len(pending_predictions)) > 0:
+        precision = (aciertos / len(pending_predictions)) * 100
         output_log.append(f"Precisión en esta revisión: {precision:.2f}%")
     output_log.append("✅ Diario de predicciones actualizado.")
     return "\n".join(output_log)
