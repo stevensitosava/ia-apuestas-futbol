@@ -102,7 +102,7 @@ log_file = 'predictions_log.csv'
 if os.path.exists(log_file):
     try:
         log_df = pd.read_csv(log_file)
-        st.dataframe(log_df.tail(20))
+        st.dataframe(log_df.tail(30))
     except Exception as e:
         st.error(f"No se pudo cargar el diario de predicciones: {e}")
 else:
